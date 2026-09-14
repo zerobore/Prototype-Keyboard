@@ -1,0 +1,26 @@
+# Android / Gradle
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build/
+/app/build/
+/app/release/
+captures/
+.externalNativeBuild/
+.cxx/
+*.hprof
+
+# Signing material must NEVER be committed. Release signing happens in CI / release machine.
+*.jks
+*.keystore
+*.p12
+keystore.properties
+
+# Build outputs are delivered via CI artifacts / GitHub Releases, not git.
+*.apk
+*.aab
+
+# Local tooling
+*.log

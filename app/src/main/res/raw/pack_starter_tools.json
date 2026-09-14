@@ -1,0 +1,71 @@
+{
+  "format": "pkb",
+  "formatVersion": 1,
+  "manifest": {
+    "id": "com.prototype.tools.starter",
+    "name": "Starter Tools",
+    "author": "Prototype",
+    "version": "1.0.0",
+    "pluginApiVersion": 1,
+    "minHostVersion": "0.3.0",
+    "kind": "tools",
+    "description": "Everyday text transforms that run on selected text or the current word."
+  },
+  "payload": {
+    "tools": [
+      {
+        "id": "shout",
+        "title": "SHOUT",
+        "icon": "📢",
+        "chain": [
+          {"op": "trim"},
+          {"op": "upper"},
+          {"op": "suffix", "arg1": "!!!"}
+        ]
+      },
+      {
+        "id": "lower",
+        "title": "lowercase",
+        "icon": "⬇️",
+        "chain": [{"op": "lower"}]
+      },
+      {
+        "id": "title",
+        "title": "Title Case",
+        "icon": "🔠",
+        "chain": [{"op": "title"}]
+      },
+      {
+        "id": "sentence",
+        "title": "Sentence case",
+        "icon": "📝",
+        "chain": [
+          {"op": "trim"},
+          {"op": "sentence"}
+        ]
+      },
+      {
+        "id": "nospace",
+        "title": "No spaces",
+        "icon": "🔗",
+        "chain": [{"op": "no_spaces"}]
+      },
+      {
+        "id": "flip",
+        "title": "Upside down",
+        "icon": "🙃",
+        "chain": [{"op": "upside_down"}]
+      },
+      {
+        "id": "quote",
+        "title": "Quote it",
+        "icon": "💬",
+        "chain": [
+          {"op": "trim"},
+          {"op": "prefix", "arg1": "\""},
+          {"op": "suffix", "arg1": "\""}
+        ]
+      }
+    ]
+  }
+}
