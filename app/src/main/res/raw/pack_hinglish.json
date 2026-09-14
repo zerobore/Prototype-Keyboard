@@ -1,0 +1,35 @@
+{
+  "format": "pkb",
+  "formatVersion": 1,
+  "manifest": {
+    "id": "com.prototype.dict.hinglish",
+    "name": "Hinglish Essentials",
+    "author": "Prototype",
+    "version": "1.0.0",
+    "pluginApiVersion": 1,
+    "minHostVersion": "0.3.0",
+    "kind": "dictionary",
+    "description": "Everyday Hindi words in Latin script for the English keyboard."
+  },
+  "payload": {
+    "locale": "en",
+    "words": [
+      "achha", "accha", "aadat", "aage", "aaj", "aap", "aapka", "abhi", "andar",
+      "arre", "aur", "baahar", "baba", "baccha", "bahar", "bahut", "bhai",
+      "bharosa", "bhookh", "bimaar", "beta", "bhabhi", "chacha", "chachi",
+      "chai", "chalo", "chhoti", "chhota", "chutti", "daadi", "dada", "dawai",
+      "didi", "dil", "din", "dost", "dosti", "dukaan", "dukh", "gali",
+      "garmi", "ghar", "gussa", "haan", "halka", "hamesha", "hum", "jaldi",
+      "jawab", "jeevan", "jhagda", "jhooth", "kaam", "kab", "kahan", "kaise",
+      "kal", "kamra", "khaana", "khana", "kharab", "khushi", "kitna", "kya",
+      "kyun", "ladka", "ladki", "log", "maaloom", "maamla", "mama", "mami",
+      "matlab", "mausam", "mehmaan", "meri", "mere", "mummy", "mushkil",
+      "naaraaz", "nahi", "namaste", "naya", "nayi", "neeche", "paani",
+      "padhai", "papa", "parivaar", "parso", "peeche", "pyaar", "raasta",
+      "raat", "roti", "roz", "saach", "saath", "sab", "sabzi", "sach",
+      "samajh", "sardi", "sawaal", "shaam", "shaanti", "shabaash", "shukriya",
+      "subah", "sundar", "tareef", "theek", "thoda", "tum", "tumhara",
+      "upar", "waqt", "yaar", "yaad", "zaroor", "zindagi"
+    ]
+  }
+}

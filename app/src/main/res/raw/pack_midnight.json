@@ -1,0 +1,33 @@
+{
+  "format": "pkb",
+  "formatVersion": 1,
+  "manifest": {
+    "id": "com.prototype.theme.midnight",
+    "name": "Midnight Blue",
+    "author": "Prototype",
+    "version": "1.0.0",
+    "pluginApiVersion": 1,
+    "minHostVersion": "0.3.0",
+    "kind": "theme",
+    "description": "Calm deep-blue theme, easy on the eyes."
+  },
+  "payload": {
+    "day": {
+      "background": "#D8E2F0",
+      "key": "#FFFFFF",
+      "funcKey": "#AEC6E4",
+      "pressedKey": "#7FA8D9",
+      "text": "#10243E",
+      "accent": "#1D4ED8"
+    },
+    "night": {
+      "background": "#0B1D3A",
+      "key": "#14305C",
+      "funcKey": "#0E2547",
+      "pressedKey": "#1E40AF",
+      "text": "#E8EEF7",
+      "accent": "#7DD3FC"
+    },
+    "keyRadiusDp": 6
+  }
+}

@@ -14,7 +14,6 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import android.widget.ViewFlipper
 import com.prototype.keyboard.R
-import com.prototype.keyboard.data.BackupCodec
 import com.prototype.keyboard.data.ClipboardRepository
 import com.prototype.keyboard.data.KeyboardSettings
 import com.prototype.keyboard.data.SettingsRepository
@@ -31,7 +30,13 @@ import com.prototype.keyboard.keyboard.KeyboardMode
 import com.prototype.keyboard.keyboard.KeyboardView
 import com.prototype.keyboard.keyboard.Layouts
 import com.prototype.keyboard.keyboard.SuggestionStripView
+import com.prototype.keyboard.keyboard.TextToolsBoardView
 import com.prototype.keyboard.keyboard.TrailPoint
+import com.prototype.keyboard.keyboard.defaultTheme
+import com.prototype.keyboard.keyboard.resolve
+import com.prototype.keyboard.plugins.PluginManager
+import com.prototype.keyboard.plugins.TextOps
+import com.prototype.keyboard.plugins.TextTool
 import com.prototype.keyboard.suggestions.Suggester
 import com.prototype.keyboard.ui.MainActivity
 import com.prototype.keyboard.util.Feedback
@@ -45,12 +50,14 @@ import kotlinx.coroutines.withContext
 /**
  * System keyboard service (the IME).
  *
- * Phase 3a: tap typing + on-device suggestions, conservative autocorrect with
- * one-tap revert, next-word prediction, glide typing, emoji/kaomoji board,
- * sectioned clipboard board with quick-paste, 5 locales, learned words.
+ * Phase 3P: tap typing + suggestions + autocorrect + glide + emoji board +
+ * sectioned clipboard + text-tools board + 5 locales + learned words +
+ * theme packs + dictionary packs. Prompt packs install now; their AI runner
+ * lands in Phase 3b.
  *
  * Privacy gates: password fields get zero suggestions/learning/autocorrect/
- * glide. Cloud AI (Phase 3b) will be strictly per-action opt-in.
+ * glide. File packs are data-only (validated at import); tool chains execute
+ * host-side via [TextOps].
  */
 class ProtoIME : InputMethodService() {
 
@@ -58,12 +65,15 @@ class ProtoIME : InputMethodService() {
     private lateinit var settingsRepo: SettingsRepository
     private lateinit var userDict: UserDictionary
     private lateinit var clipboardRepo: ClipboardRepository
+    private lateinit var pluginManager: PluginManager
     private var settings = KeyboardSettings()
+    private var pluginState = PluginManager.PluginState.EMPTY
 
     private var keyboardView: KeyboardView? = null
     private var stripView: SuggestionStripView? = null
     private var emojiBoard: EmojiBoardView? = null
     private var clipBoard: ClipboardBoardView? = null
+    private var toolsBoard: TextToolsBoardView? = null
     private var flipper: ViewFlipper? = null
 
     private var suggester: Suggester? = null
@@ -94,8 +104,12 @@ class ProtoIME : InputMethodService() {
         settingsRepo = SettingsRepository(applicationContext)
         userDict = UserDictionary(AppDatabase.get(applicationContext))
         clipboardRepo = ClipboardRepository(applicationContext)
+        pluginManager = PluginManager(applicationContext)
         clipManager = getSystemService(ClipboardManager::class.java)
         runCatching { clipManager?.addPrimaryClipChangedListener(clipListener) }
+        scope.launch {
+            pluginManager.preinstallIfNeeded()
+        }
         scope.launch {
             settingsRepo.settings.collect {
                 val localeChanged = it.currentLocale != settings.currentLocale
@@ -106,6 +120,13 @@ class ProtoIME : InputMethodService() {
                     scope.launch(Dispatchers.Default) { rebuildSuggesterNow() }
                 }
                 applySettingsToViews()
+            }
+        }
+        scope.launch {
+            pluginManager.state.collect {
+                pluginState = it
+                applyPluginTheme()
+                scope.launch(Dispatchers.Default) { rebuildSuggesterNow() }
             }
         }
         scope.launch(Dispatchers.Default) {
@@ -169,10 +190,18 @@ class ProtoIME : InputMethodService() {
                 override fun onFeedback() = performFeedback()
             }
         }
+        val tools = TextToolsBoardView(this).apply {
+            listener = object : TextToolsBoardView.Listener {
+                override fun onTool(tool: TextTool) = runTextTool(tool)
+                override fun onBackToKeyboard() = showBoard(BOARD_KEYS)
+                override fun onFeedback() = performFeedback()
+            }
+        }
         val switcher = ViewFlipper(this).apply {
             addView(keyboard)
             addView(emoji)
             addView(clips)
+            addView(tools)
         }
 
         container.addView(
@@ -194,6 +223,7 @@ class ProtoIME : InputMethodService() {
         keyboardView = keyboard
         emojiBoard = emoji
         clipBoard = clips
+        toolsBoard = tools
         flipper = switcher
         clips.bind(clipboardRepo, scope)
         applySettingsToViews()
@@ -236,11 +266,12 @@ class ProtoIME : InputMethodService() {
         stripView = null
         emojiBoard = null
         clipBoard = null
+        toolsBoard = null
         flipper = null
         super.onDestroy()
     }
 
-    // ---- Dictionary ----
+    // ---- Dictionary (bundled + packs + learned) ----
 
     private fun readBundledWords(): List<String> {
         return runCatching {
@@ -257,7 +288,10 @@ class ProtoIME : InputMethodService() {
 
     private suspend fun rebuildSuggesterNow() {
         val user = runCatching { userDict.wordsForLocale(locale) }.getOrNull().orEmpty()
-        val bundled = bundledForLocale()
+        val packWords = runCatching { pluginManager.dictionariesFor(locale) }.getOrNull().orEmpty()
+            .map { it.trim().lowercase() }
+            .filter { Suggester.isIndexable(it) }
+        val bundled = (bundledForLocale() + packWords).distinct()
         val current = suggester
         if (current == null) {
             suggester = Suggester(bundled, user)
@@ -303,13 +337,8 @@ class ProtoIME : InputMethodService() {
     }
 
     private fun applySettingsToViews() {
-        val dark = when (settings.themeMode) {
-            ThemeMode.LIGHT -> false
-            ThemeMode.DARK -> true
-            ThemeMode.SYSTEM -> isSystemDark()
-        }
+        val dark = isDarkNow()
         keyboardView?.let {
-            it.themeDark = dark
             it.keyBorders = settings.keyBorders
             it.glideEnabled = settings.glideEnabled
             if (it.keyHeightDp != settings.keyHeightDp) it.keyHeightDp = settings.keyHeightDp
@@ -317,11 +346,33 @@ class ProtoIME : InputMethodService() {
         stripView?.themeDark = dark
         emojiBoard?.themeDark = dark
         clipBoard?.themeDark = dark
+        toolsBoard?.themeDark = dark
+        applyPluginTheme()
     }
 
-    private fun isSystemDark(): Boolean =
-        (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+    private fun applyPluginTheme() {
+        val keyboard = keyboardView ?: return
+        val dark = isDarkNow()
+        val themeId = pluginState.activeThemeId
+        if (themeId.isEmpty()) {
+            keyboard.viewTheme = defaultTheme(dark)
+            return
+        }
+        scope.launch(Dispatchers.Default) {
+            val pack = runCatching { pluginManager.readTheme(themeId) }.getOrNull()
+            val resolved = pack?.resolve(dark) ?: defaultTheme(dark)
+            withContext(Dispatchers.Main) {
+                keyboardView?.viewTheme = resolved
+            }
+        }
+    }
+
+    private fun isDarkNow(): Boolean = when (settings.themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
             Configuration.UI_MODE_NIGHT_YES
+    }
 
     private fun localeLabel(): String = locale.uppercase()
 
@@ -330,6 +381,12 @@ class ProtoIME : InputMethodService() {
     private fun showBoard(index: Int) {
         flipper?.displayedChild = index
         if (index == BOARD_CLIPS) clipBoard?.refresh()
+        if (index == BOARD_TOOLS) {
+            scope.launch {
+                val tools = runCatching { pluginManager.enabledTools() }.getOrNull().orEmpty()
+                toolsBoard?.setTools(tools)
+            }
+        }
     }
 
     private fun handleStripAction(action: SuggestionStripView.StripAction) {
@@ -345,6 +402,10 @@ class ProtoIME : InputMethodService() {
             }
             SuggestionStripView.StripAction.EMOJI -> {
                 val target = if (flipper?.displayedChild == BOARD_EMOJI) BOARD_KEYS else BOARD_EMOJI
+                showBoard(target)
+            }
+            SuggestionStripView.StripAction.TOOLS -> {
+                val target = if (flipper?.displayedChild == BOARD_TOOLS) BOARD_KEYS else BOARD_TOOLS
                 showBoard(target)
             }
         }
@@ -570,9 +631,7 @@ class ProtoIME : InputMethodService() {
             return
         }
         val keyWidth = keyboardView?.keyUnitWidthPx ?: 60f
-        val results = GlideTyper.decode(path, keys, keyWidth, bundledEn.ifEmpty {
-            emptyList()
-        })
+        val results = GlideTyper.decode(path, keys, keyWidth, bundledEn.ifEmpty { emptyList() })
         val ic = currentInputConnection
         if (results.isEmpty() || ic == null) {
             // Fallback: commit the nearest letter to the trail end.
@@ -614,6 +673,37 @@ class ProtoIME : InputMethodService() {
         learnWord(top)
         if (shifted && !capsLock) setShift(false)
         updateAutoCaps()
+    }
+
+    // ---- Text tools ----
+
+    private fun runTextTool(tool: TextTool) {
+        val ic = currentInputConnection ?: return
+        pendingRevert = null
+        pendingGlideWord = null
+        val selected = runCatching {
+            ic.getSelectedText(0)?.toString()
+        }.getOrNull().orEmpty()
+        if (selected.isNotEmpty()) {
+            val result = TextOps.runChain(selected, tool.chain)
+            // commitText replaces the current selection.
+            runCatching { ic.commitText(result, 1) }
+            refreshSuggestions()
+            return
+        }
+        val before = runCatching { ic.getTextBeforeCursor(64, 0)?.toString().orEmpty() }
+            .getOrNull().orEmpty()
+        val word = extractCurrentWord(before)
+        if (word.isEmpty()) {
+            toast("Select text, or put the cursor after a word")
+            return
+        }
+        val result = TextOps.runChain(word, tool.chain)
+        runCatching {
+            ic.deleteSurroundingText(word.length, 0)
+            ic.commitText(result, 1)
+        }
+        refreshSuggestions()
     }
 
     private fun learnWord(word: String) {
@@ -749,6 +839,7 @@ class ProtoIME : InputMethodService() {
         private const val BOARD_KEYS = 0
         private const val BOARD_EMOJI = 1
         private const val BOARD_CLIPS = 2
+        private const val BOARD_TOOLS = 3
 
         private val LOCALE_ORDER = listOf("en", "es", "de", "fr", "hi")
         private val LOCALE_NAMES = mapOf(
@@ -758,9 +849,5 @@ class ProtoIME : InputMethodService() {
             "fr" to "Français",
             "hi" to "हिन्दी"
         )
-
-        // Referenced to keep the backup codec linked & covered (used by the app UI).
-        @Suppress("unused")
-        private const val BACKUP_VERSION = 1
     }
 }

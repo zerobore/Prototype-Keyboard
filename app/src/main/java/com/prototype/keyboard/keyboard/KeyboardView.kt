@@ -22,8 +22,8 @@ import kotlin.math.min
  *
  * Capabilities: tap typing, slide-between-keys, shift/caps rendering,
  * key-press preview bubble, long-press popup alternatives, long-press delete
- * repeat, swipe-down-from-space to hide, and glide typing with a trail
- * overlay (when enabled; decoded by [GlideTyper] in the IME).
+ * repeat, swipe-down-from-space to hide, glide typing with trail overlay,
+ * and theme-pack support ([viewTheme]).
  *
  * The PopupWindow used for long-press alternatives is deliberately NOT focusable
  * / touchable: an IME must never steal input focus, so slide-to-select is
@@ -67,7 +67,9 @@ class KeyboardView @JvmOverloads constructor(
             field = value
             invalidate()
         }
-    var themeDark: Boolean = false
+
+    /** Active resolved theme (built-in default or a theme pack). */
+    var viewTheme: ResolvedTheme = defaultTheme(false)
         set(value) {
             field = value
             invalidate()
@@ -245,19 +247,18 @@ class KeyboardView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val dark = themeDark
-        val bg = if (dark) COLOR_BG_DARK else COLOR_BG_LIGHT
-        canvas.drawColor(bg)
+        val theme = viewTheme
+        canvas.drawColor(theme.background)
 
-        paintKey.color = if (dark) COLOR_KEY_DARK else COLOR_KEY_LIGHT
-        paintFuncKey.color = if (dark) COLOR_FUNC_DARK else COLOR_FUNC_LIGHT
-        paintPressed.color = if (dark) COLOR_PRESSED_DARK else COLOR_PRESSED_LIGHT
-        paintText.color = if (dark) COLOR_TEXT_DARK else COLOR_TEXT_LIGHT
-        paintAccent.color = if (dark) COLOR_ACCENT_DARK else COLOR_ACCENT_LIGHT
-        paintBubble.color = if (dark) COLOR_ACCENT_DARK else COLOR_ACCENT_LIGHT
+        paintKey.color = theme.key
+        paintFuncKey.color = theme.funcKey
+        paintPressed.color = theme.pressedKey
+        paintText.color = theme.text
+        paintAccent.color = theme.accent
+        paintBubble.color = theme.accent
         paintBubbleText.color = 0xFFFFFFFF.toInt()
 
-        val radius = KEY_RADIUS_DP * density
+        val radius = theme.radiusDp * density
         val isShifted = shifted || capsLock
 
         layout.rows.forEachIndexed { r, row ->
@@ -272,7 +273,6 @@ class KeyboardView @JvmOverloads constructor(
                 if (keyBorders) {
                     canvas.drawRoundRect(rect, radius, radius, paint)
                 } else {
-                    // Borderless: draw gap-colored separators by shrinking fill slightly.
                     tmpRect.set(rect)
                     tmpRect.inset(1f * density, 1f * density)
                     canvas.drawRoundRect(tmpRect, radius / 2f, radius / 2f, paint)
@@ -305,7 +305,7 @@ class KeyboardView @JvmOverloads constructor(
 
     private fun drawTrail(canvas: Canvas) {
         if (trail.size < 2) return
-        paintTrail.color = if (themeDark) COLOR_ACCENT_DARK else COLOR_ACCENT_LIGHT
+        paintTrail.color = viewTheme.accent
         paintTrail.alpha = 170
         paintTrail.strokeWidth = 9f * density
         for (i in 1 until trail.size) {
@@ -530,11 +530,10 @@ class KeyboardView @JvmOverloads constructor(
         popupOriginal = spec
         popupSelected = -1
 
-        val dark = themeDark
+        val theme = viewTheme
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            val bgColor = if (dark) COLOR_KEY_DARK else COLOR_KEY_LIGHT
-            setBackgroundColor(bgColor)
+            setBackgroundColor(theme.key)
             setPadding(
                 (8 * density).toInt(), (8 * density).toInt(),
                 (8 * density).toInt(), (8 * density).toInt()
@@ -545,7 +544,7 @@ class KeyboardView @JvmOverloads constructor(
                 text = if (shifted || capsLock) label.uppercase() else label
                 textSize = 24f
                 gravity = Gravity.CENTER
-                setTextColor(if (dark) COLOR_TEXT_DARK else COLOR_TEXT_LIGHT)
+                setTextColor(theme.text)
                 minWidth = (52 * density).toInt()
                 setPadding((10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt())
                 container.addView(this)
@@ -587,13 +586,9 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun highlightPopup(selected: Int) {
+        val pressed = viewTheme.pressedKey
         popupOptionViews.forEachIndexed { i, view ->
-            val color = if (i == selected) {
-                if (themeDark) COLOR_PRESSED_DARK else COLOR_PRESSED_LIGHT
-            } else {
-                0x00000000
-            }
-            view.setBackgroundColor(color)
+            view.setBackgroundColor(if (i == selected) pressed else 0x00000000)
         }
     }
 
@@ -641,27 +636,11 @@ class KeyboardView @JvmOverloads constructor(
         private const val LONG_PRESS_MS = 400L
         private const val DELETE_REPEAT_MS = 60L
         private const val KEY_GAP_DP = 4f
-        private const val KEY_RADIUS_DP = 6f
         private const val HIDE_SWIPE_DP = 80f
         private const val HIDE_SWIPE_MAX_MS = 600L
         private const val MAX_TRAIL_POINTS = 256
         private const val GLIDE_MIN_KEYS = 3
         private const val GLIDE_MIN_SPAN_KEYS = 3.5f
-
-        // Key palette (light / dark).
-        private const val COLOR_BG_LIGHT = 0xFFD8DCE3.toInt()
-        private const val COLOR_KEY_LIGHT = 0xFFFFFFFF.toInt()
-        private const val COLOR_FUNC_LIGHT = 0xFFB9C0CB.toInt()
-        private const val COLOR_PRESSED_LIGHT = 0xFF9FB4D8.toInt()
-        private const val COLOR_TEXT_LIGHT = 0xFF1F1F1F.toInt()
-        private const val COLOR_ACCENT_LIGHT = 0xFF0B57D0.toInt()
-
-        private const val COLOR_BG_DARK = 0xFF28292A.toInt()
-        private const val COLOR_KEY_DARK = 0xFF3E3F42.toInt()
-        private const val COLOR_FUNC_DARK = 0xFF2F3033.toInt()
-        private const val COLOR_PRESSED_DARK = 0xFF5F6368.toInt()
-        private const val COLOR_TEXT_DARK = 0xFFE8EAED.toInt()
-        private const val COLOR_ACCENT_DARK = 0xFFA8C7FA.toInt()
     }
 }
 

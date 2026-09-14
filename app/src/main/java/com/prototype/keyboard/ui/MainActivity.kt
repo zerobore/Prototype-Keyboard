@@ -21,6 +21,7 @@ import com.prototype.keyboard.data.KeyboardSettings
 import com.prototype.keyboard.data.SettingsRepository
 import com.prototype.keyboard.data.UserDictionary
 import com.prototype.keyboard.data.db.AppDatabase
+import com.prototype.keyboard.plugins.PluginManager
 
 class MainActivity : ComponentActivity() {
 
@@ -30,10 +31,11 @@ class MainActivity : ComponentActivity() {
         val repo = SettingsRepository(app)
         val userDict = UserDictionary(AppDatabase.get(app))
         val clips = ClipboardRepository(app)
+        val plugins = PluginManager(app)
         setContent {
             val settings by repo.settings.collectAsState(initial = KeyboardSettings())
             ProtoTheme(mode = settings.themeMode) {
-                AppRoot(repo = repo, userDict = userDict, clips = clips, settings = settings)
+                AppRoot(repo = repo, userDict = userDict, clips = clips, plugins = plugins, settings = settings)
             }
         }
     }
@@ -41,6 +43,7 @@ class MainActivity : ComponentActivity() {
 
 private enum class Tab(val title: String, val glyph: String) {
     Setup("Setup", "🏠"),
+    Studio("Studio", "🧩"),
     Data("Data", "📚"),
     Settings("Settings", "⚙"),
     Test("Test", "⌨"),
@@ -52,6 +55,7 @@ private fun AppRoot(
     repo: SettingsRepository,
     userDict: UserDictionary,
     clips: ClipboardRepository,
+    plugins: PluginManager,
     settings: KeyboardSettings,
 ) {
     var tab by remember { mutableStateOf(Tab.Setup) }
@@ -72,6 +76,7 @@ private fun AppRoot(
         Box(Modifier.padding(padding)) {
             when (tab) {
                 Tab.Setup -> SetupScreen(onOpenTest = { tab = Tab.Test })
+                Tab.Studio -> StudioScreen(pluginManager = plugins)
                 Tab.Data -> DataScreen(userDict = userDict, clipboardRepo = clips)
                 Tab.Settings -> SettingsScreen(
                     settings = settings,

@@ -1,0 +1,48 @@
+{
+  "format": "pkb",
+  "formatVersion": 1,
+  "manifest": {
+    "id": "com.prototype.prompts.writer",
+    "name": "Writer's Assistant",
+    "author": "Prototype",
+    "version": "1.0.0",
+    "pluginApiVersion": 1,
+    "minHostVersion": "0.3.0",
+    "kind": "prompts",
+    "description": "Everyday rewriting prompts. The AI runner arrives in Phase 3b."
+  },
+  "payload": {
+    "prompts": [
+      {
+        "id": "fix-grammar",
+        "title": "Fix grammar",
+        "template": "Fix the grammar and spelling of this text. Keep the meaning and language ({{locale}}). Reply with only the corrected text:\n\n{{text}}",
+        "description": "Correct mistakes, keep meaning."
+      },
+      {
+        "id": "shorten",
+        "title": "Shorten",
+        "template": "Rewrite this text to be shorter and punchier, keeping all key points:\n\n{{text}}",
+        "description": "Same points, fewer words."
+      },
+      {
+        "id": "friendly",
+        "title": "Make friendly",
+        "template": "Rewrite this text in a warm, friendly tone:\n\n{{text}}",
+        "description": "Warm it up."
+      },
+      {
+        "id": "formal",
+        "title": "Make formal",
+        "template": "Rewrite this text in a formal, professional tone:\n\n{{text}}",
+        "description": "Office-ready."
+      },
+      {
+        "id": "summarize",
+        "title": "Summarize",
+        "template": "Summarize this text in two short bullet points:\n\n{{text}}",
+        "description": "TL;DR as bullets."
+      }
+    ]
+  }
+}

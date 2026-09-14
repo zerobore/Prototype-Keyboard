@@ -1,0 +1,33 @@
+{
+  "format": "pkb",
+  "formatVersion": 1,
+  "manifest": {
+    "id": "com.prototype.theme.neon",
+    "name": "Neon Nights",
+    "author": "Prototype",
+    "version": "1.0.0",
+    "pluginApiVersion": 1,
+    "minHostVersion": "0.3.0",
+    "kind": "theme",
+    "description": "Dark neon theme with a glowing accent."
+  },
+  "payload": {
+    "day": {
+      "background": "#E4E7F2",
+      "key": "#FFFFFF",
+      "funcKey": "#C3C9E8",
+      "pressedKey": "#9D8DF1",
+      "text": "#1A1B3A",
+      "accent": "#5B3DF5"
+    },
+    "night": {
+      "background": "#0A0E1A",
+      "key": "#16213E",
+      "funcKey": "#0F3460",
+      "pressedKey": "#E94560",
+      "text": "#FFFFFF",
+      "accent": "#00FFC8"
+    },
+    "keyRadiusDp": 8
+  }
+}

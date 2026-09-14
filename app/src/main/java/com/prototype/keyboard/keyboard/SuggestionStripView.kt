@@ -8,7 +8,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /**
- * Strip above the keys: quick actions (settings / clipboard / emoji),
+ * Strip above the keys: quick actions (settings / clipboard / emoji / tools),
  * a persistent quick-paste chip (optional via settings), plus up to 3
  * live suggestions. Empty suggestions show the locale chip.
  * Buttons use text glyphs to avoid asset deps.
@@ -19,7 +19,7 @@ class SuggestionStripView @JvmOverloads constructor(
     defStyleAttr: Int = 0,
 ) : LinearLayout(context, attrs, defStyleAttr) {
 
-    enum class StripAction { SETTINGS, CLIPBOARD, EMOJI }
+    enum class StripAction { SETTINGS, CLIPBOARD, EMOJI, TOOLS }
 
     interface Listener {
         fun onStripAction(action: StripAction)
@@ -56,7 +56,7 @@ class SuggestionStripView @JvmOverloads constructor(
                 gravity = Gravity.CENTER
                 isClickable = true
                 isFocusable = false
-                setPadding((10 * density).toInt(), (8 * density).toInt(), (10 * density).toInt(), (8 * density).toInt())
+                setPadding((8 * density).toInt(), (8 * density).toInt(), (8 * density).toInt(), (8 * density).toInt())
                 setOnClickListener { listener?.onStripAction(action) }
                 addView(this, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
             }
@@ -66,6 +66,7 @@ class SuggestionStripView @JvmOverloads constructor(
             actionButton("⚙", "Keyboard settings", StripAction.SETTINGS),
             actionButton("📋", "Clipboard", StripAction.CLIPBOARD),
             actionButton("😀", "Emoji", StripAction.EMOJI),
+            actionButton("🛠", "Text tools", StripAction.TOOLS),
         )
 
         // Persistent quick-paste chip (optional via settings; replaces one-shot paste).
@@ -74,12 +75,12 @@ class SuggestionStripView @JvmOverloads constructor(
             textSize = 13f
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
-            maxWidth = (120 * density).toInt()
+            maxWidth = (110 * density).toInt()
             isClickable = true
             isFocusable = false
             visibility = GONE
             contentDescription = "Quick paste"
-            setPadding((10 * density).toInt(), (8 * density).toInt(), (10 * density).toInt(), (8 * density).toInt())
+            setPadding((8 * density).toInt(), (8 * density).toInt(), (8 * density).toInt(), (8 * density).toInt())
             setOnClickListener { listener?.onQuickPaste() }
             this@SuggestionStripView.addView(
                 this,
