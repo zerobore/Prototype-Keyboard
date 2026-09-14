@@ -20,9 +20,10 @@ import kotlin.math.min
 /**
  * Custom-drawn keyboard view.
  *
- * Phase 1 capabilities: tap typing, slide-between-keys, shift/caps rendering,
+ * Capabilities: tap typing, slide-between-keys, shift/caps rendering,
  * key-press preview bubble, long-press popup alternatives, long-press delete
- * repeat, swipe-down-from-space to hide.
+ * repeat, swipe-down-from-space to hide, and glide typing with a trail
+ * overlay (when enabled; decoded by [GlideTyper] in the IME).
  *
  * The PopupWindow used for long-press alternatives is deliberately NOT focusable
  * / touchable: an IME must never steal input focus, so slide-to-select is
@@ -37,6 +38,9 @@ class KeyboardView @JvmOverloads constructor(
     interface Listener {
         /** A key was tapped (or a long-press option was selected). */
         fun onKey(spec: KeySpec)
+
+        /** A glide trail finished: decode into a word. */
+        fun onGlide(path: List<TrailPoint>, keys: List<KeyCenter>)
 
         /**
          * Long-press on a key. Return true if consumed (e.g. caps-lock toggle,
@@ -87,6 +91,12 @@ class KeyboardView @JvmOverloads constructor(
             requestLayout()
         }
 
+    var glideEnabled: Boolean = false
+
+    /** Representative single-key width in px (glide anchor tolerance). */
+    var keyUnitWidthPx: Float = 60f
+        private set
+
     private var layout: KeyboardLayout = Layouts.englishLetters()
     private var rects: List<List<RectF>> = emptyList()
 
@@ -99,6 +109,11 @@ class KeyboardView @JvmOverloads constructor(
     private val paintAccent = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
     private val paintBubble = Paint(Paint.ANTI_ALIAS_FLAG)
     private val paintBubbleText = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
+    private val paintTrail = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
     private val tmpRect = RectF()
 
     private val handler = Handler(Looper.getMainLooper())
@@ -112,6 +127,12 @@ class KeyboardView @JvmOverloads constructor(
     private var downOnSpace = false
     private var hideGestureFired = false
     private var deleteRepeating = false
+
+    // Glide trail state
+    private val trail = ArrayList<TrailPoint>()
+    private val trailKeys = LinkedHashSet<Pair<Int, Int>>()
+    private var trailLengthPx = 0f
+    private var glideActive = false
 
     // Long-press popup state (visual only; selection tracked here).
     private var popupWindow: PopupWindow? = null
@@ -162,6 +183,9 @@ class KeyboardView @JvmOverloads constructor(
 
     fun setKeyboardLayout(value: KeyboardLayout) {
         dismissPopup()
+        trail.clear()
+        trailKeys.clear()
+        glideActive = false
         handler.removeCallbacks(longPressRunnable)
         handler.removeCallbacks(deleteRepeatRunnable)
         deleteRepeating = false
@@ -211,6 +235,10 @@ class KeyboardView @JvmOverloads constructor(
             top += rowH
         }
         rects = newRects
+        // First-row keys are single-weight in every layout: good width unit.
+        newRects.firstOrNull()?.firstOrNull()?.width()?.let {
+            if (it > 0f) keyUnitWidthPx = it
+        }
     }
 
     // ---- Draw ----
@@ -272,10 +300,39 @@ class KeyboardView @JvmOverloads constructor(
         }
 
         drawPreviewBubble(canvas, isShifted)
+        drawTrail(canvas)
+    }
+
+    private fun drawTrail(canvas: Canvas) {
+        if (trail.size < 2) return
+        paintTrail.color = if (themeDark) COLOR_ACCENT_DARK else COLOR_ACCENT_LIGHT
+        paintTrail.alpha = 170
+        paintTrail.strokeWidth = 9f * density
+        for (i in 1 until trail.size) {
+            canvas.drawLine(trail[i - 1].x, trail[i - 1].y, trail[i].x, trail[i].y, paintTrail)
+        }
+        val start = trail.first()
+        canvas.drawCircle(start.x, start.y, 7f * density, paintTrail)
+    }
+
+    /** Snapshot of letter keys for the glide decoder. */
+    fun snapshotKeys(): List<KeyCenter> {
+        val out = ArrayList<KeyCenter>()
+        layout.rows.forEachIndexed { r, row ->
+            row.keys.forEachIndexed { c, key ->
+                if (key.action != KeyAction.CHAR) return@forEachIndexed
+                val label = key.label
+                if (label.length != 1 || !label[0].isLetter()) return@forEachIndexed
+                val rect = rects.getOrNull(r)?.getOrNull(c) ?: return@forEachIndexed
+                out.add(KeyCenter(label[0], rect.centerX(), rect.centerY()))
+            }
+        }
+        return out
     }
 
     private fun drawPreviewBubble(canvas: Canvas, isShifted: Boolean) {
         if (popupWindow != null) return // options popup is showing instead
+        if (glideActive) return
         val spec = pressedSpec() ?: return
         if (spec.action != KeyAction.CHAR) return
         val label = spec.displayLabel(isShifted)
@@ -285,7 +342,6 @@ class KeyboardView @JvmOverloads constructor(
         val bubbleW = max(rect.width() * 1.5f, 52f * density)
         val bubbleH = 58f * density
         val left = (rect.centerX() - bubbleW / 2f).coerceIn(0f, (width - bubbleW).coerceAtLeast(0f))
-        // getLocationOnScreen not needed: bubble drawn inside the view.
         val top = (rect.top - bubbleH - 6f * density).coerceAtLeast(0f)
         tmpRect.set(left, top, left + bubbleW, top + bubbleH)
         canvas.drawRoundRect(tmpRect, 10f * density, 10f * density, paintBubble)
@@ -328,6 +384,12 @@ class KeyboardView @JvmOverloads constructor(
                 pressedRow = pos.first
                 pressedCol = pos.second
                 downOnSpace = pressedSpec()?.action == KeyAction.SPACE
+                trail.clear()
+                trail.add(TrailPoint(event.x, event.y))
+                trailKeys.clear()
+                trailKeys.add(pos.first to pos.second)
+                trailLengthPx = 0f
+                glideActive = false
                 invalidate()
                 onPressFeedback?.invoke()
                 handler.removeCallbacks(longPressRunnable)
@@ -354,7 +416,31 @@ class KeyboardView @JvmOverloads constructor(
                     return true
                 }
                 if (deleteRepeating) return true
+                if (glideEnabled) {
+                    val last = trail.lastOrNull()
+                    if (last != null) {
+                        val dx = event.x - last.x
+                        val dy = event.y - last.y
+                        trailLengthPx += kotlin.math.sqrt(dx * dx + dy * dy)
+                    }
+                    if (trail.size < MAX_TRAIL_POINTS) trail.add(TrailPoint(event.x, event.y))
+                }
                 val pos = findKey(event.x, event.y)
+                if (pos != null) trailKeys.add(pos.first to pos.second)
+                if (glideEnabled && !glideActive && pos != null &&
+                    (trailKeys.size >= GLIDE_MIN_KEYS || trailLengthPx > keyUnitWidthPx * GLIDE_MIN_SPAN_KEYS)
+                ) {
+                    glideActive = true
+                    handler.removeCallbacks(longPressRunnable)
+                    pressedRow = -1
+                    pressedCol = -1
+                    invalidate()
+                    return true
+                }
+                if (glideActive) {
+                    invalidate()
+                    return true
+                }
                 if (pos != null && (pos.first != pressedRow || pos.second != pressedCol)) {
                     // Sliding between keys cancels long-press.
                     handler.removeCallbacks(longPressRunnable)
@@ -369,6 +455,17 @@ class KeyboardView @JvmOverloads constructor(
                 handler.removeCallbacks(longPressRunnable)
                 if (hideGestureFired) {
                     hideGestureFired = false
+                    trail.clear()
+                    return true
+                }
+                if (glideActive) {
+                    glideActive = false
+                    val path = trail.toList()
+                    trail.clear()
+                    clearPressed()
+                    if (path.size >= 2) {
+                        runCatching { listener?.onGlide(path, snapshotKeys()) }
+                    }
                     return true
                 }
                 if (popupWindow != null) {
@@ -380,12 +477,8 @@ class KeyboardView @JvmOverloads constructor(
                 handler.removeCallbacks(deleteRepeatRunnable)
                 val spec = pressedSpec()
                 clearPressed()
-                // For delete long-press, repeats already fired; the initial DOWN
-                // did not commit, so commit once on short taps only.
                 if (spec != null && !wasRepeating) {
                     runCatching { listener?.onKey(spec) }
-                } else if (spec != null && wasRepeating) {
-                    // Long-press delete already deleted; nothing more to do.
                 }
                 return true
             }
@@ -420,6 +513,9 @@ class KeyboardView @JvmOverloads constructor(
         handler.removeCallbacks(longPressRunnable)
         handler.removeCallbacks(deleteRepeatRunnable)
         deleteRepeating = false
+        trail.clear()
+        trailKeys.clear()
+        glideActive = false
         dismissPopup()
         clearPressed()
     }
@@ -439,7 +535,6 @@ class KeyboardView @JvmOverloads constructor(
             orientation = LinearLayout.HORIZONTAL
             val bgColor = if (dark) COLOR_KEY_DARK else COLOR_KEY_LIGHT
             setBackgroundColor(bgColor)
-            // Rounded card look via padding; PopupWindow clips to content.
             setPadding(
                 (8 * density).toInt(), (8 * density).toInt(),
                 (8 * density).toInt(), (8 * density).toInt()
@@ -549,6 +644,9 @@ class KeyboardView @JvmOverloads constructor(
         private const val KEY_RADIUS_DP = 6f
         private const val HIDE_SWIPE_DP = 80f
         private const val HIDE_SWIPE_MAX_MS = 600L
+        private const val MAX_TRAIL_POINTS = 256
+        private const val GLIDE_MIN_KEYS = 3
+        private const val GLIDE_MIN_SPAN_KEYS = 3.5f
 
         // Key palette (light / dark).
         private const val COLOR_BG_LIGHT = 0xFFD8DCE3.toInt()

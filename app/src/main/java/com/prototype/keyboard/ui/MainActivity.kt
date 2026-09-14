@@ -16,18 +16,24 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.prototype.keyboard.data.ClipboardRepository
 import com.prototype.keyboard.data.KeyboardSettings
 import com.prototype.keyboard.data.SettingsRepository
+import com.prototype.keyboard.data.UserDictionary
+import com.prototype.keyboard.data.db.AppDatabase
 
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val repo = SettingsRepository(applicationContext)
+        val app = applicationContext
+        val repo = SettingsRepository(app)
+        val userDict = UserDictionary(AppDatabase.get(app))
+        val clips = ClipboardRepository(app)
         setContent {
             val settings by repo.settings.collectAsState(initial = KeyboardSettings())
             ProtoTheme(mode = settings.themeMode) {
-                AppRoot(repo = repo, settings = settings)
+                AppRoot(repo = repo, userDict = userDict, clips = clips, settings = settings)
             }
         }
     }
@@ -35,13 +41,19 @@ class MainActivity : ComponentActivity() {
 
 private enum class Tab(val title: String, val glyph: String) {
     Setup("Setup", "🏠"),
+    Data("Data", "📚"),
     Settings("Settings", "⚙"),
     Test("Test", "⌨"),
     About("About", "ℹ"),
 }
 
 @Composable
-private fun AppRoot(repo: SettingsRepository, settings: KeyboardSettings) {
+private fun AppRoot(
+    repo: SettingsRepository,
+    userDict: UserDictionary,
+    clips: ClipboardRepository,
+    settings: KeyboardSettings,
+) {
     var tab by remember { mutableStateOf(Tab.Setup) }
     Scaffold(
         bottomBar = {
@@ -60,7 +72,13 @@ private fun AppRoot(repo: SettingsRepository, settings: KeyboardSettings) {
         Box(Modifier.padding(padding)) {
             when (tab) {
                 Tab.Setup -> SetupScreen(onOpenTest = { tab = Tab.Test })
-                Tab.Settings -> SettingsScreen(settings = settings, repo = repo)
+                Tab.Data -> DataScreen(userDict = userDict, clipboardRepo = clips)
+                Tab.Settings -> SettingsScreen(
+                    settings = settings,
+                    repo = repo,
+                    userDict = userDict,
+                    clipboardRepo = clips
+                )
                 Tab.Test -> TestDriveScreen()
                 Tab.About -> AboutScreen()
             }

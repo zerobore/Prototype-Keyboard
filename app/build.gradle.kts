@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.kapt)
 }
 
 android {
@@ -12,8 +13,8 @@ android {
         // Wide compatibility: Android 7.0 (API 24) and above.
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -64,19 +65,22 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.datastore)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    kapt(libs.androidx.room.compiler)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
 
-    // Phase 3 wires these in (smart engine: Room user dictionary + EmojiCompat).
-    // Declared in the version catalog now so versions stay pinned.
-
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)
+    // org.json is built into Android but not the JVM: needed for BackupCodec JVM tests.
+    testImplementation(libs.org.json)
 
     debugImplementation(libs.compose.ui.test.manifest)
+    androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.espresso.core)

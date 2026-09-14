@@ -8,11 +8,10 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /**
- * Strip above the keys: quick actions (settings / clipboard / emoji) plus
- * up to 3 suggestions.
- *
- * Phase 1: suggestions list is always empty (smart engine is Phase 3), so the
- * strip shows the locale chip. Buttons use text glyphs to avoid asset deps.
+ * Strip above the keys: quick actions (settings / clipboard / emoji),
+ * a persistent quick-paste chip (optional via settings), plus up to 3
+ * live suggestions. Empty suggestions show the locale chip.
+ * Buttons use text glyphs to avoid asset deps.
  */
 class SuggestionStripView @JvmOverloads constructor(
     context: Context,
@@ -25,6 +24,7 @@ class SuggestionStripView @JvmOverloads constructor(
     interface Listener {
         fun onStripAction(action: StripAction)
         fun onSuggestion(word: String)
+        fun onQuickPaste()
     }
 
     var listener: Listener? = null
@@ -38,6 +38,7 @@ class SuggestionStripView @JvmOverloads constructor(
     private val density: Float get() = resources.displayMetrics.density
 
     private val actionButtons: List<TextView>
+    private val quickPasteButton: TextView
     private val suggestionViews: List<TextView>
     private val localeChip: TextView
 
@@ -67,6 +68,25 @@ class SuggestionStripView @JvmOverloads constructor(
             actionButton("😀", "Emoji", StripAction.EMOJI),
         )
 
+        // Persistent quick-paste chip (optional via settings; replaces one-shot paste).
+        quickPasteButton = TextView(context).apply {
+            gravity = Gravity.CENTER
+            textSize = 13f
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            maxWidth = (120 * density).toInt()
+            isClickable = true
+            isFocusable = false
+            visibility = GONE
+            contentDescription = "Quick paste"
+            setPadding((10 * density).toInt(), (8 * density).toInt(), (10 * density).toInt(), (8 * density).toInt())
+            setOnClickListener { listener?.onQuickPaste() }
+            this@SuggestionStripView.addView(
+                this,
+                LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT)
+            )
+        }
+
         suggestionViews = (0 until 3).map { index ->
             TextView(context).apply {
                 gravity = Gravity.CENTER
@@ -85,7 +105,6 @@ class SuggestionStripView @JvmOverloads constructor(
                         gravity = Gravity.CENTER_VERTICAL
                     }
                 )
-                // Tag the middle slot; IME bolds the autocorrect target in Phase 3.
                 tag = index
             }
         }
@@ -99,6 +118,16 @@ class SuggestionStripView @JvmOverloads constructor(
 
         applyTheme()
         setSuggestions(emptyList(), "EN")
+    }
+
+    /** Persistent quick-paste chip. Null hides it. */
+    fun setQuickPaste(preview: String?) {
+        if (preview.isNullOrEmpty()) {
+            quickPasteButton.visibility = GONE
+        } else {
+            quickPasteButton.visibility = VISIBLE
+            quickPasteButton.text = "📥 $preview"
+        }
     }
 
     fun setSuggestions(words: List<String>, localeLabel: String) {
@@ -120,7 +149,7 @@ class SuggestionStripView @JvmOverloads constructor(
         setBackgroundColor(if (dark) 0xFF1F2021.toInt() else 0xFFE8EAED.toInt())
         val fg = if (dark) 0xFFE8EAED.toInt() else 0xFF1F1F1F.toInt()
         val hint = if (dark) 0xFF9AA0A6.toInt() else 0xFF5F6368.toInt()
-        (actionButtons + suggestionViews).forEach { it.setTextColor(fg) }
+        (actionButtons + suggestionViews + quickPasteButton).forEach { it.setTextColor(fg) }
         localeChip.setTextColor(hint)
     }
 }

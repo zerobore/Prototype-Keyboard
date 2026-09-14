@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -25,7 +26,10 @@ enum class ThemeMode {
     }
 }
 
-/** All user-tunable keyboard settings. Persisted via DataStore (private to the app). */
+/**
+ * All user-tunable keyboard settings. Persisted via DataStore (private to the app).
+ * House rule: every feature is optional — each gets a toggle here.
+ */
 data class KeyboardSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val hapticFeedback: Boolean = true,
@@ -36,12 +40,18 @@ data class KeyboardSettings(
     val keyHeightDp: Int = 56,
     val keyBorders: Boolean = true,
     val suggestionsEnabled: Boolean = true,
-    /** Persisted now, enforced when the smart engine lands (Phase 3). */
     val autocorrectEnabled: Boolean = false,
-    /** Persisted now, enforced when the smart engine lands (Phase 3). */
     val glideEnabled: Boolean = false,
     val autoCapsEnabled: Boolean = true,
     val doubleSpacePeriodEnabled: Boolean = true,
+    /** Persistent quick-paste chip in the strip (replaces one-shot paste). */
+    val quickPasteEnabled: Boolean = true,
+    /** Auto-save system clipboard copies into sections. */
+    val clipboardCaptureEnabled: Boolean = true,
+    /** Learn typed words into the on-device dictionary. */
+    val learningEnabled: Boolean = true,
+    /** Active locale: en / es / de / fr / hi. */
+    val currentLocale: String = "en",
 )
 
 class SettingsRepository(private val context: Context) {
@@ -58,13 +68,17 @@ class SettingsRepository(private val context: Context) {
         val GLIDE = booleanPreferencesKey("glide")
         val AUTO_CAPS = booleanPreferencesKey("auto_caps")
         val DOUBLE_SPACE_PERIOD = booleanPreferencesKey("double_space_period")
+        val QUICK_PASTE = booleanPreferencesKey("quick_paste")
+        val CLIPBOARD_CAPTURE = booleanPreferencesKey("clipboard_capture")
+        val LEARNING = booleanPreferencesKey("learning")
+        val LOCALE = stringPreferencesKey("locale")
     }
 
     val settings: Flow<KeyboardSettings> =
         context.dataStore.data
             .catch { e ->
                 // Corrupt / first-run store -> fall back to defaults instead of crashing.
-                if (e is IOException) emit(androidx.datastore.preferences.core.emptyPreferences())
+                if (e is IOException) emit(emptyPreferences())
                 else throw e
             }
             .map { prefs ->
@@ -84,6 +98,12 @@ class SettingsRepository(private val context: Context) {
                     autoCapsEnabled = prefs[Keys.AUTO_CAPS] ?: defaults.autoCapsEnabled,
                     doubleSpacePeriodEnabled = prefs[Keys.DOUBLE_SPACE_PERIOD]
                         ?: defaults.doubleSpacePeriodEnabled,
+                    quickPasteEnabled = prefs[Keys.QUICK_PASTE] ?: defaults.quickPasteEnabled,
+                    clipboardCaptureEnabled = prefs[Keys.CLIPBOARD_CAPTURE]
+                        ?: defaults.clipboardCaptureEnabled,
+                    learningEnabled = prefs[Keys.LEARNING] ?: defaults.learningEnabled,
+                    currentLocale = prefs[Keys.LOCALE]?.takeIf { it.length in 2..8 }
+                        ?: defaults.currentLocale,
                 )
             }
 
@@ -129,6 +149,22 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setDoubleSpacePeriodEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.DOUBLE_SPACE_PERIOD] = enabled }
+    }
+
+    suspend fun setQuickPasteEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.QUICK_PASTE] = enabled }
+    }
+
+    suspend fun setClipboardCaptureEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.CLIPBOARD_CAPTURE] = enabled }
+    }
+
+    suspend fun setLearningEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.LEARNING] = enabled }
+    }
+
+    suspend fun setCurrentLocale(locale: String) {
+        context.dataStore.edit { it[Keys.LOCALE] = locale.take(8) }
     }
 
     suspend fun resetToDefaults() {
